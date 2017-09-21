@@ -1634,6 +1634,7 @@ data BuildFlags = BuildFlags {
     buildDistPref    :: Flag FilePath,
     buildVerbosity   :: Flag Verbosity,
     buildNumJobs     :: Flag (Maybe Int),
+    buildTypecheckOnly :: Flag Bool,
     -- TODO: this one should not be here, it's just that the silly
     -- UserHooks stop us from passing extra info in other ways
     buildArgs :: [String]
@@ -1651,6 +1652,7 @@ defaultBuildFlags  = BuildFlags {
     buildDistPref    = mempty,
     buildVerbosity   = Flag normal,
     buildNumJobs     = mempty,
+    buildTypecheckOnly = mempty,
     buildArgs        = []
   }
 
@@ -1698,6 +1700,8 @@ buildOptions :: ProgramDb -> ShowOrParseArgs
 buildOptions progDb showOrParseArgs =
   [ optionNumJobs
       buildNumJobs (\v flags -> flags { buildNumJobs = v })
+  , optionTypecheckOnly
+      buildTypecheckOnly (\v flags -> flags { buildTypecheckOnly = v})
   ]
 
   ++ programDbPaths progDb showOrParseArgs
@@ -2200,6 +2204,14 @@ optionNumJobs get set =
             | n < 1     -> Left "The number of jobs should be 1 or more."
             | otherwise -> Right (Just n)
           _             -> Left "The jobs value should be a number or '$ncpus'"
+
+optionTypecheckOnly :: (flags -> Flag Bool)
+  -> (Flag Bool -> flags -> flags)
+  -> OptionField flags
+optionTypecheckOnly get set =
+  option "" ["typecheck"]
+  "Don't generate code, just typecheck!"
+  get set trueArg
 
 -- ------------------------------------------------------------
 -- * Other Utils

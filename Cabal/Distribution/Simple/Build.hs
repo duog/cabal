@@ -119,13 +119,14 @@ build pkg_descr lbi flags suffixes = do
                    withPackageDB = withPackageDB lbi ++ [internalPackageDB],
                    installedPkgs = index
                  }
-    mb_ipi <- buildComponent verbosity (buildNumJobs flags) pkg_descr
+    mb_ipi <- buildComponent verbosity typecheckOnly (buildNumJobs flags) pkg_descr
                    lbi' suffixes comp clbi distPref
     return (maybe index (Index.insert `flip` index) mb_ipi)
   return ()
  where
   distPref  = fromFlag (buildDistPref flags)
   verbosity = fromFlag (buildVerbosity flags)
+  typecheckOnly = fromFlagOrDefault False (buildTypecheckOnly flags)
 
 
 repl     :: PackageDescription  -- ^ Mostly information from the .cabal file
@@ -164,7 +165,7 @@ repl pkg_descr lbi flags suffixes args = do
              comp = targetComponent subtarget
              lbi' = lbiForComponent comp lbi
          componentInitialBuildSteps distPref pkg_descr lbi clbi verbosity
-         buildComponent verbosity NoFlag
+         buildComponent verbosity False NoFlag
                         pkg_descr lbi' suffixes comp clbi distPref
     | subtarget <- init componentsToBuild ]
 
@@ -186,6 +187,7 @@ startInterpreter verbosity programDb comp platform packageDBs =
     _     -> die' verbosity "A REPL is not supported with this compiler."
 
 buildComponent :: Verbosity
+               -> Bool -- ^ Typecheck Only
                -> Flag (Maybe Int)
                -> PackageDescription
                -> LocalBuildInfo
@@ -194,15 +196,16 @@ buildComponent :: Verbosity
                -> ComponentLocalBuildInfo
                -> FilePath
                -> IO (Maybe InstalledPackageInfo)
-buildComponent verbosity numJobs pkg_descr lbi suffixes
+buildComponent verbosity typecheckOnly numJobs pkg_descr lbi suffixes
                comp@(CLib lib) clbi distPref = do
     preprocessComponent pkg_descr comp lbi clbi False verbosity suffixes
     extras <- preprocessExtras verbosity comp lbi
-    setupMessage' verbosity "Building" (packageId pkg_descr)
+    let msg = if typecheckOnly then "Typechecking" else "Building"
+    setupMessage' verbosity msg (packageId pkg_descr)
       (componentLocalName clbi) (maybeComponentInstantiatedWith clbi)
     let libbi = libBuildInfo lib
         lib' = lib { libBuildInfo = addExtraCSources libbi extras }
-    buildLib verbosity numJobs pkg_descr lbi lib' clbi
+    buildLib verbosity typecheckOnly numJobs pkg_descr lbi lib' clbi
 
     let oneComponentRequested (OneComponentRequestedSpec _) = True
         oneComponentRequested _ = False
@@ -229,41 +232,43 @@ buildComponent verbosity numJobs pkg_descr lbi suffixes
         return (Just installedPkgInfo)
       else return Nothing
 
-buildComponent verbosity numJobs pkg_descr lbi suffixes
+buildComponent verbosity typecheckOnly numJobs pkg_descr lbi suffixes
                comp@(CFLib flib) clbi _distPref = do
     preprocessComponent pkg_descr comp lbi clbi False verbosity suffixes
     setupMessage' verbosity "Building" (packageId pkg_descr)
       (componentLocalName clbi) (maybeComponentInstantiatedWith clbi)
-    buildFLib verbosity numJobs pkg_descr lbi flib clbi
+    buildFLib verbosity typecheckOnly numJobs pkg_descr lbi flib clbi
     return Nothing
 
-buildComponent verbosity numJobs pkg_descr lbi suffixes
+buildComponent verbosity typecheckOnly numJobs pkg_descr lbi suffixes
                comp@(CExe exe) clbi _ = do
     preprocessComponent pkg_descr comp lbi clbi False verbosity suffixes
     extras <- preprocessExtras verbosity comp lbi
-    setupMessage' verbosity "Building" (packageId pkg_descr)
+    let msg = if typecheckOnly then "Typechecking" else "Building"
+    setupMessage' verbosity msg (packageId pkg_descr)
       (componentLocalName clbi) (maybeComponentInstantiatedWith clbi)
     let ebi = buildInfo exe
         exe' = exe { buildInfo = addExtraCSources ebi extras }
-    buildExe verbosity numJobs pkg_descr lbi exe' clbi
+    buildExe verbosity typecheckOnly numJobs pkg_descr lbi exe' clbi
     return Nothing
 
 
-buildComponent verbosity numJobs pkg_descr lbi suffixes
+buildComponent verbosity typecheckOnly numJobs pkg_descr lbi suffixes
                comp@(CTest test@TestSuite { testInterface = TestSuiteExeV10{} })
                clbi _distPref = do
     let exe = testSuiteExeV10AsExe test
     preprocessComponent pkg_descr comp lbi clbi False verbosity suffixes
     extras <- preprocessExtras verbosity comp lbi
-    setupMessage' verbosity "Building" (packageId pkg_descr)
+    let msg = if typecheckOnly then "Typechecking" else "Building"
+    setupMessage' verbosity msg (packageId pkg_descr)
       (componentLocalName clbi) (maybeComponentInstantiatedWith clbi)
     let ebi = buildInfo exe
         exe' = exe { buildInfo = addExtraCSources ebi extras }
-    buildExe verbosity numJobs pkg_descr lbi exe' clbi
+    buildExe verbosity typecheckOnly numJobs pkg_descr lbi exe' clbi
     return Nothing
 
 
-buildComponent verbosity numJobs pkg_descr lbi0 suffixes
+buildComponent verbosity typecheckOnly numJobs pkg_descr lbi0 suffixes
                comp@(CTest
                  test@TestSuite { testInterface = TestSuiteLibV09{} })
                clbi -- This ComponentLocalBuildInfo corresponds to a detailed
@@ -277,9 +282,10 @@ buildComponent verbosity numJobs pkg_descr lbi0 suffixes
           testSuiteLibV09AsLibAndExe pkg_descr test clbi lbi0 distPref pwd
     preprocessComponent pkg_descr comp lbi clbi False verbosity suffixes
     extras <- preprocessExtras verbosity comp lbi
-    setupMessage' verbosity "Building" (packageId pkg_descr)
+    let msg = if typecheckOnly then "Typechecking" else "Building"
+    setupMessage' verbosity msg (packageId pkg_descr)
       (componentLocalName clbi) (maybeComponentInstantiatedWith clbi)
-    buildLib verbosity numJobs pkg lbi lib libClbi
+    buildLib verbosity False numJobs pkg lbi lib libClbi
     -- NB: need to enable multiple instances here, because on 7.10+
     -- the package name is the same as the library, and we still
     -- want the registration to go through.
@@ -290,31 +296,32 @@ buildComponent verbosity numJobs pkg_descr lbi0 suffixes
                     }
     let ebi = buildInfo exe
         exe' = exe { buildInfo = addExtraCSources ebi extras }
-    buildExe verbosity numJobs pkg_descr lbi exe' exeClbi
+    buildExe verbosity typecheckOnly numJobs pkg_descr lbi exe' exeClbi
     return Nothing -- Can't depend on test suite
 
 
-buildComponent verbosity _ _ _ _
+buildComponent verbosity _ _ _ _ _
                (CTest TestSuite { testInterface = TestSuiteUnsupported tt })
                _ _ =
     die' verbosity $ "No support for building test suite type " ++ display tt
 
 
-buildComponent verbosity numJobs pkg_descr lbi suffixes
+buildComponent verbosity typecheckOnly numJobs pkg_descr lbi suffixes
                comp@(CBench bm@Benchmark { benchmarkInterface = BenchmarkExeV10 {} })
                clbi _ = do
     let (exe, exeClbi) = benchmarkExeV10asExe bm clbi
     preprocessComponent pkg_descr comp lbi clbi False verbosity suffixes
     extras <- preprocessExtras verbosity comp lbi
-    setupMessage' verbosity "Building" (packageId pkg_descr)
+    let msg = if typecheckOnly then "Typechecking" else "Building"
+    setupMessage' verbosity msg (packageId pkg_descr)
       (componentLocalName clbi) (maybeComponentInstantiatedWith clbi)
     let ebi = buildInfo exe
         exe' = exe { buildInfo = addExtraCSources ebi extras }
-    buildExe verbosity numJobs pkg_descr lbi exe' exeClbi
+    buildExe verbosity typecheckOnly numJobs pkg_descr lbi exe' exeClbi
     return Nothing
 
 
-buildComponent verbosity _ _ _ _
+buildComponent verbosity _ _ _ _ _
                (CBench Benchmark { benchmarkInterface = BenchmarkUnsupported tt })
                _ _ =
     die' verbosity $ "No support for building benchmark type " ++ display tt
@@ -562,12 +569,13 @@ addInternalBuildTools pkg lbi bi progs =
 
 -- TODO: build separate libs in separate dirs so that we can build
 -- multiple libs, e.g. for 'LibTest' library-style test suites
-buildLib :: Verbosity -> Flag (Maybe Int)
+buildLib :: Verbosity -> Bool -> Flag (Maybe Int)
                       -> PackageDescription -> LocalBuildInfo
                       -> Library            -> ComponentLocalBuildInfo -> IO ()
-buildLib verbosity numJobs pkg_descr lbi lib clbi =
+buildLib verbosity typecheckOnly numJobs pkg_descr lbi lib clbi =
   case compilerFlavor (compiler lbi) of
-    GHC   -> GHC.buildLib   verbosity numJobs pkg_descr lbi lib clbi
+    GHC   -> GHC.buildLib  verbosity typecheckOnly
+                                      numJobs pkg_descr lbi lib clbi
     GHCJS -> GHCJS.buildLib verbosity numJobs pkg_descr lbi lib clbi
     JHC   -> JHC.buildLib   verbosity         pkg_descr lbi lib clbi
     LHC   -> LHC.buildLib   verbosity         pkg_descr lbi lib clbi
@@ -579,20 +587,21 @@ buildLib verbosity numJobs pkg_descr lbi lib clbi =
 --
 -- NOTE: We assume that we already checked that we can actually build the
 -- foreign library in configure.
-buildFLib :: Verbosity -> Flag (Maybe Int)
+buildFLib :: Verbosity -> Bool -> Flag (Maybe Int)
                        -> PackageDescription -> LocalBuildInfo
                        -> ForeignLib         -> ComponentLocalBuildInfo -> IO ()
-buildFLib verbosity numJobs pkg_descr lbi flib clbi =
+buildFLib verbosity typecheckOnly numJobs pkg_descr lbi flib clbi =
     case compilerFlavor (compiler lbi) of
-      GHC -> GHC.buildFLib verbosity numJobs pkg_descr lbi flib clbi
+      GHC -> GHC.buildFLib verbosity typecheckOnly numJobs pkg_descr lbi flib clbi
       _   -> die' verbosity "Building is not supported with this compiler."
 
-buildExe :: Verbosity -> Flag (Maybe Int)
+buildExe :: Verbosity -> Bool -> Flag (Maybe Int)
                       -> PackageDescription -> LocalBuildInfo
                       -> Executable         -> ComponentLocalBuildInfo -> IO ()
-buildExe verbosity numJobs pkg_descr lbi exe clbi =
+buildExe verbosity typecheckOnly numJobs pkg_descr lbi exe clbi =
   case compilerFlavor (compiler lbi) of
-    GHC   -> GHC.buildExe   verbosity numJobs pkg_descr lbi exe clbi
+    GHC   -> GHC.buildExe   verbosity typecheckOnly
+                                      numJobs pkg_descr lbi exe clbi
     GHCJS -> GHCJS.buildExe verbosity numJobs pkg_descr lbi exe clbi
     JHC   -> JHC.buildExe   verbosity         pkg_descr lbi exe clbi
     LHC   -> LHC.buildExe   verbosity         pkg_descr lbi exe clbi

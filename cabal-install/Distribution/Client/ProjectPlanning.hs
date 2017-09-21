@@ -3115,6 +3115,7 @@ setupHsBuildFlags _ _ verbosity builddir =
       buildVerbosity    = toFlag verbosity,
       buildDistPref     = toFlag builddir,
       buildNumJobs      = mempty, --TODO: [nice to have] sometimes want to use toFlag (Just numBuildJobs),
+      buildTypecheckOnly = mempty, -- TODO: Provide a UI for cabal-install to set this
       buildArgs         = mempty  -- unused, passed via args not flags
     }
 

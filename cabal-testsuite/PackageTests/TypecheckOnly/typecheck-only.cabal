@@ -1,0 +1,32 @@
+name: typecheck-only
+version: 0.1
+license: BSD3
+author: Douglas Wilson
+stability: stable
+category: PackageTests
+build-type: Simple
+cabal-version: >= 1.8
+description:
+    Check that './Setup build --typecheck' works in a variety of scenarios
+
+library
+    hs-source-dirs:      lib
+    exposed-modules:     Lib
+    build-depends:       base
+
+executable exe
+    hs-source-dirs:      exe
+    main-is:             exe.hs
+    build-depends:       base, typecheck-only
+
+benchmark bench
+    type:                exitcode-stdio-1.0
+    hs-source-dirs:      bench
+    main-is:             bench.hs
+    build-depends:       base, typecheck-only
+
+test-suite test
+    type:                exitcode-stdio-1.0
+    hs-source-dirs:      test
+    main-is:             test.hs
+    build-depends:       base, typecheck-only

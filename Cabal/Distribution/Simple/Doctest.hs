@@ -100,7 +100,7 @@ componentGhcOptions :: Verbosity -> LocalBuildInfo
                  -> GhcOptions
 componentGhcOptions verbosity lbi bi clbi odir =
   let f = case compilerFlavor (compiler lbi) of
-            GHC   -> GHC.componentGhcOptions
+            GHC   -> \v -> GHC.componentGhcOptions v False
             GHCJS -> GHCJS.componentGhcOptions
             _     -> error $
                        "Distribution.Simple.Doctest.componentGhcOptions:" ++

@@ -816,7 +816,7 @@ componentGhcOptions :: Verbosity -> LocalBuildInfo
                     -> BuildInfo -> ComponentLocalBuildInfo -> FilePath
                     -> GhcOptions
 componentGhcOptions verbosity lbi bi clbi odir =
-  let opts = Internal.componentGhcOptions verbosity implInfo lbi bi clbi odir
+  let opts = Internal.componentGhcOptions verbosity False implInfo lbi bi clbi odir
       comp = compiler lbi
       implInfo = getImplInfo comp
   in  opts { ghcOptExtra = ghcOptExtra opts `mappend` toNubListR

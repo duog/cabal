@@ -290,7 +290,7 @@ componentGhcOptions :: Verbosity -> LocalBuildInfo
                  -> GhcOptions
 componentGhcOptions verbosity lbi bi clbi odir =
   let f = case compilerFlavor (compiler lbi) of
-            GHC   -> GHC.componentGhcOptions
+            GHC   -> flip GHC.componentGhcOptions False
             GHCJS -> GHCJS.componentGhcOptions
             _     -> error $
                        "Distribution.Simple.Haddock.componentGhcOptions:" ++
